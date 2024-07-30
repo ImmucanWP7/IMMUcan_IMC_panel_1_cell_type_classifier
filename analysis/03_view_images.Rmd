@@ -1,0 +1,71 @@
+---
+title: "inspect cells with cytomapper"
+author: "Daniel Schulz"
+date: "2024-07-29"
+output:
+  workflowr::wflow_html:
+    toc: false
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+# Please set this path to the folder which contains all the data downloaded from Zenodo
+mount_path <- "D:/Data/classification_public/"
+```
+
+In this script we will read in the data from all patients that have been used to train the classifier and on which the classifier has been run to classify cell phenotypes. We will then read in the images as well and use cytomapper for visualization
+
+```{r load-libraries}
+library(SingleCellExperiment)
+library(cytomapper)
+library(cytoviewer)
+```
+
+# load data
+```{r}
+#read single cell data
+sce <- readRDS(paste0(mount_path,"sce_raw.rds"))
+# read in images
+images <- readRDS(paste0(mount_path,"all_images.rds"))
+# read in masks
+masks <- readRDS(paste0(mount_path,"all_masks.rds"))
+```
+
+```{r}
+mcols(images)
+mcols(masks)
+# check if sample ids are matched between images and single cell object
+unique(sce$sample_id) %in% mcols(images)$sample_id
+```
+
+# cytomapper
+```{r}
+if (interactive()) {
+  cytomapperShiny(object = sce, mask = masks, image = images,
+                  cell_id = "ObjectNumber", img_id = "sample_id")
+}
+```
+
+# cytomapper
+```{r}
+if (interactive()) {
+  cytomapperShiny(object = sce, mask = masks, image = images,
+                  cell_id = "ObjectNumber", img_id = "sample_id")
+}
+```
+
+# cytoviewer
+
+```{r}
+if (interactive()) {
+  cytoviewer(object = sce,
+             mask = masks,
+             image = images,
+             cell_id = "ObjectNumber",
+             img_id = "sample_id")
+}
+```

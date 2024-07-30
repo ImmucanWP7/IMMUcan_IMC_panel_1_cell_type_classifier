@@ -1,0 +1,307 @@
+---
+title: "inspect labelled cells"
+author: "Daniel Schulz"
+date: "2024-07-26"
+output:
+  workflowr::wflow_html:
+    toc: false
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+# Please set this path to the folder which contains all the data downloaded from Zenodo
+mount_path <- "D:/Data/classification_public/"
+```
+
+In this script we will inspect the manually gated cells
+
+Note: gating was performed in two large batches (V1 and V3). We will inspect the labelled cells of both batches here.
+
+```{r load-libraries}
+library(dittoSeq)
+library(scran)
+library(viridis)
+library(scater)
+```
+
+
+```{r load-data}
+sce <- readRDS(paste0(mount_path,"sce_labelled_V1.rds"))
+sce_new <- readRDS(paste0(mount_path,"sce_labelled_V3.rds"))
+```
+
+```{r define-color-vector, fig.height=7, fig.width=7}
+cell_types <- c("B", "plasma", "CD4", "CD8", "Treg", "BnT",
+                "DC", "HLADR", "MacCD163", "Neutrophil", "NK", "pDC", "Mural", 
+                "Tumor", "unlabelled", "undefined")
+
+names(cell_types) <- cell_types
+cell_types["B"] <- "red3"
+cell_types["plasma"] <- "goldenrod2"
+cell_types["CD4"] <- "palevioletred1"
+cell_types["CD8"] <- "darkorchid"
+cell_types["Treg"] <- "maroon4"
+cell_types["BnT"] <- "darkorange4"
+cell_types["DC"] <- "green4"
+cell_types["HLADR"] <- "darkgreen"
+cell_types["MacCD163"] <- "green"
+cell_types["Neutrophil"] <- "blue1"
+cell_types["NK"] <- "yellow"
+cell_types["pDC"] <- "deepskyblue"
+cell_types["Mural"] <- "tomato"
+cell_types["Tumor"] <- "sienna4"
+cell_types["unlabelled"] <- "gray"
+cell_types["undefined"] <- "black"
+
+metadata(sce)$colour_vectors$cell_types <- cell_types
+metadata(sce_new)$colour_vectors$cell_types <- cell_types
+```
+
+# Heatmap V1 labelling
+
+## markers used for labelling
+```{r heatmap-V1, fig.width=20, fig.height=15}
+lab_sce <- sce[,sce$cell_labels != "unlabelled"]
+agr_sce <- aggregateAcrossCells(lab_sce, 
+                                ids = colData(lab_sce)[,c("sample_id", "cell_labels")], 
+                                statistics = "mean")
+assay(agr_sce, "exprs") <- asinh(counts(agr_sce))
+colnames(agr_sce) <- paste0(agr_sce$sample_id, "_", 
+                            agr_sce$cell_labels)
+
+# Define markers that were used for gating
+cur_markers <- c("Ecad", "CarbonicAnhydrase", "Ki67", "CD14", "HLADR", 
+                 "CD11c", "CD163", "CD303", "CD68", "CD15", "MPO", "CD38",
+                 "SMA", "PDGFRb", "CD20", "CD7", "CD3", "CD8a", "CD4", "GrzB", "FOXP3", "PD1")
+
+# Non-scaled
+dittoHeatmap(agr_sce[cur_markers,], assay = "exprs",
+            annot.by = c("sample_id", "cell_labels", "Indication"), 
+            cluster_rows = FALSE,
+            scale = "none", heatmap.colors = viridis(100), order.by = "cell_labels",
+            annotation_colors = list(cell_labels = metadata(sce)$colour_vectors$cell_types))
+
+# Centered and scaled
+dittoHeatmap(agr_sce[cur_markers,], assay = "exprs",
+            annot.by = c("sample_id", "cell_labels", "Indication"), 
+            cluster_rows = FALSE, order.by = "cell_labels",
+            annotation_colors = list(cell_labels = metadata(sce)$colour_vectors$cell_types),
+            heatmap.colors = colorRampPalette(c("dark blue", "white", "dark red"))(100),
+            breaks = seq(-3, 3, length.out = 101))
+```
+
+## all good markers
+```{r heatmap-V1, fig.width=20, fig.height=15}
+lab_sce <- sce[,sce$cell_labels != "unlabelled"]
+agr_sce <- aggregateAcrossCells(lab_sce, 
+                                ids = colData(lab_sce)[,c("sample_id", "cell_labels")], 
+                                statistics = "mean")
+assay(agr_sce, "exprs") <- asinh(counts(agr_sce))
+colnames(agr_sce) <- paste0(agr_sce$sample_id, "_", 
+                            agr_sce$cell_labels)
+
+# Define markers that were used for gating
+good_markers <- rownames(sce)[!grepl("DNA|Histone",rownames(sce))]
+
+# Non-scaled
+dittoHeatmap(agr_sce[good_markers,], assay = "exprs",
+            annot.by = c("sample_id", "cell_labels", "Indication"), 
+            cluster_rows = FALSE,
+            scale = "none", heatmap.colors = viridis(100), order.by = "cell_labels",
+            annotation_colors = list(cell_labels = metadata(sce)$colour_vectors$cell_types))
+
+# Centered and scaled
+dittoHeatmap(agr_sce[good_markers,], assay = "exprs",
+            annot.by = c("sample_id", "cell_labels", "Indication"), 
+            cluster_rows = FALSE, order.by = "cell_labels",
+            annotation_colors = list(cell_labels = metadata(sce)$colour_vectors$cell_types),
+            heatmap.colors = colorRampPalette(c("dark blue", "white", "dark red"))(100),
+            breaks = seq(-3, 3, length.out = 101))
+```
+
+## Batch correction
+```{r}
+library(batchelor)
+library(BiocParallel)
+rowData(sce)$use_channel <- !grepl("DNA|Histone", rownames(sce))
+
+out <- fastMNN(sce, batch = sce$sample_id,
+               subset.row = rowData(sce)$use_channel,
+               assay.type = "exprs", 
+               BPPARAM = MulticoreParam(workers = 16, RNGseed = 221101))
+
+# Transfer the correction results to the main spe object
+reducedDim(sce, "fastMNN") <- reducedDim(out, "corrected")
+```
+
+## plot UMAP
+```{r}
+set.seed(221101)
+sce <- runUMAP(sce,
+               subset_row = good_markers,
+               name = "UMAP",
+               assay.type = "exprs" )
+
+cur_unlab_sce <- sce[,sce$cell_labels == "unlabelled"]
+cur_lab_sce <- sce[,sce$cell_labels != "unlabelled"]
+
+ggplot() +
+    geom_point(aes(x = UMAP_1, y = UMAP_2, colour = cell_labels), 
+              data = data.frame(UMAP_1 = reducedDim(cur_unlab_sce, "UMAP")[,1],
+                                UMAP_2 = reducedDim(cur_unlab_sce, "UMAP")[,2],
+                                cell_labels = colData(cur_unlab_sce)$cell_labels)) +
+    geom_point(aes(x = UMAP_1, y = UMAP_2, colour = cell_labels), size = 0.5, 
+            data = data.frame(UMAP_1 = reducedDim(cur_lab_sce, "UMAP")[,1],
+                              UMAP_2 = reducedDim(cur_lab_sce, "UMAP")[,2],
+                              cell_labels = colData(cur_lab_sce)$cell_labels)) +
+    scale_color_manual(values = metadata(sce)$colour_vectors$cell_types) + 
+    theme_bw()
+```
+
+## plot batch corrected UMAP
+```{r}
+set.seed(221101)
+sce <- runUMAP(sce, dimred = "fastMNN", name = "UMAP_fastMNN")
+
+cur_unlab_sce <- sce[,sce$cell_labels == "unlabelled"]
+cur_lab_sce <- sce[,sce$cell_labels != "unlabelled"]
+
+ggplot() +
+    geom_point(aes(x = UMAP_1, y = UMAP_2, colour = cell_labels), 
+              data = data.frame(UMAP_1 = reducedDim(cur_unlab_sce, "UMAP_fastMNN")[,1],
+                                UMAP_2 = reducedDim(cur_unlab_sce, "UMAP_fastMNN")[,2],
+                                cell_labels = colData(cur_unlab_sce)$cell_labels)) +
+    geom_point(aes(x = UMAP_1, y = UMAP_2, colour = cell_labels), size = 0.5, 
+            data = data.frame(UMAP_1 = reducedDim(cur_lab_sce, "UMAP_fastMNN")[,1],
+                              UMAP_2 = reducedDim(cur_lab_sce, "UMAP_fastMNN")[,2],
+                              cell_labels = colData(cur_lab_sce)$cell_labels)) +
+    scale_color_manual(values = metadata(sce)$colour_vectors$cell_types) + 
+    theme_bw()
+```
+
+
+# Heatmap V3 labelling
+
+## markers used for labelling
+```{r heatmap-V1, fig.width=20, fig.height=15}
+lab_sce <- sce_new[,sce_new$cell_labels != "unlabelled"]
+agr_sce_new <- aggregateAcrossCells(lab_sce_new, 
+                                ids = colData(lab_sce_new)[,c("sample_id", "cell_labels")], 
+                                statistics = "mean")
+assay(agr_sce_new, "exprs") <- asinh(counts(agr_sce_new))
+colnames(agr_sce_new) <- paste0(agr_sce_new$sample_id, "_", 
+                            agr_sce_new$cell_labels)
+
+# Define markers that were used for gating
+cur_markers <- c("Ecad", "CarbonicAnhydrase", "Ki67", "CD14", "HLADR", 
+                 "CD11c", "CD163", "CD303", "CD68", "CD15", "MPO", "CD38",
+                 "SMA", "PDGFRb", "CD20", "CD7", "CD3", "CD8a", "CD4", "GrzB", "FOXP3", "PD1")
+
+# Non-scaled
+dittoHeatmap(agr_sce_new[cur_markers,], assay = "exprs",
+            annot.by = c("sample_id", "cell_labels", "Indication"), 
+            cluster_rows = FALSE,
+            scale = "none", heatmap.colors = viridis(100), order.by = "cell_labels",
+            annotation_colors = list(cell_labels = metadata(sce_new)$colour_vectors$cell_types))
+
+# Centered and scaled
+dittoHeatmap(agr_sce_new[cur_markers,], assay = "exprs",
+            annot.by = c("sample_id", "cell_labels", "Indication"), 
+            cluster_rows = FALSE, order.by = "cell_labels",
+            annotation_colors = list(cell_labels = metadata(sce_new)$colour_vectors$cell_types),
+            heatmap.colors = colorRampPalette(c("dark blue", "white", "dark red"))(100),
+            breaks = seq(-3, 3, length.out = 101))
+```
+
+## all good markers
+```{r heatmap-V1, fig.width=20, fig.height=15}
+lab_sce_new <- sce_new[,sce_new$cell_labels != "unlabelled"]
+agr_sce_new <- aggregateAcrossCells(lab_sce_new, 
+                                ids = colData(lab_sce_new)[,c("sample_id", "cell_labels")], 
+                                statistics = "mean")
+assay(agr_sce_new, "exprs") <- asinh(counts(agr_sce_new))
+colnames(agr_sce_new) <- paste0(agr_sce_new$sample_id, "_", 
+                            agr_sce_new$cell_labels)
+
+# Define markers that were used for gating
+good_markers <- rownames(sce_new)[!grepl("DNA|Histone",rownames(sce_new))]
+
+# Non-scaled
+dittoHeatmap(agr_sce_new[good_markers,], assay = "exprs",
+            annot.by = c("sample_id", "cell_labels", "Indication"), 
+            cluster_rows = FALSE,
+            scale = "none", heatmap.colors = viridis(100), order.by = "cell_labels",
+            annotation_colors = list(cell_labels = metadata(sce_new)$colour_vectors$cell_types))
+
+# Centered and scaled
+dittoHeatmap(agr_sce_new[good_markers,], assay = "exprs",
+            annot.by = c("sample_id", "cell_labels", "Indication"), 
+            cluster_rows = FALSE, order.by = "cell_labels",
+            annotation_colors = list(cell_labels = metadata(sce_new)$colour_vectors$cell_types),
+            heatmap.colors = colorRampPalette(c("dark blue", "white", "dark red"))(100),
+            breaks = seq(-3, 3, length.out = 101))
+```
+
+## Batch correction
+```{r}
+library(batchelor)
+library(BiocParallel)
+rowData(sce_new)$use_channel <- !grepl("DNA|Histone", rownames(sce_new))
+
+out <- fastMNN(sce_new, batch = sce_new$sample_id,
+               subset.row = rowData(sce_new)$use_channel,
+               assay.type = "exprs", 
+               BPPARAM = MulticoreParam(workers = 16, RNGseed = 221101))
+
+# Transfer the correction results to the main spe object
+reducedDim(sce_new, "fastMNN") <- reducedDim(out, "corrected")
+```
+
+## plot UMAP
+```{r}
+set.seed(221101)
+sce_new <- runUMAP(sce_new,
+               subset_row = good_markers,
+               name = "UMAP",
+               assay.type = "exprs" )
+
+cur_unlab_sce_new <- sce_new[,sce_new$cell_labels == "unlabelled"]
+cur_lab_sce_new <- sce_new[,sce_new$cell_labels != "unlabelled"]
+
+ggplot() +
+    geom_point(aes(x = UMAP_1, y = UMAP_2, colour = cell_labels), 
+              data = data.frame(UMAP_1 = reducedDim(cur_unlab_sce_new, "UMAP")[,1],
+                                UMAP_2 = reducedDim(cur_unlab_sce_new, "UMAP")[,2],
+                                cell_labels = colData(cur_unlab_sce_new)$cell_labels)) +
+    geom_point(aes(x = UMAP_1, y = UMAP_2, colour = cell_labels), size = 0.5, 
+            data = data.frame(UMAP_1 = reducedDim(cur_lab_sce_new, "UMAP")[,1],
+                              UMAP_2 = reducedDim(cur_lab_sce_new, "UMAP")[,2],
+                              cell_labels = colData(cur_lab_sce_new)$cell_labels)) +
+    scale_color_manual(values = metadata(sce_new)$colour_vectors$cell_types) + 
+    theme_bw()
+```
+
+## plot batch corrected UMAP
+```{r}
+set.seed(221101)
+sce_new <- runUMAP(sce_new, dimred = "fastMNN", name = "UMAP_fastMNN")
+
+cur_unlab_sce_new <- sce_new[,sce_new$cell_labels == "unlabelled"]
+cur_lab_sce_new <- sce_new[,sce_new$cell_labels != "unlabelled"]
+
+ggplot() +
+    geom_point(aes(x = UMAP_1, y = UMAP_2, colour = cell_labels), 
+              data = data.frame(UMAP_1 = reducedDim(cur_unlab_sce_new, "UMAP_fastMNN")[,1],
+                                UMAP_2 = reducedDim(cur_unlab_sce_new, "UMAP_fastMNN")[,2],
+                                cell_labels = colData(cur_unlab_sce_new)$cell_labels)) +
+    geom_point(aes(x = UMAP_1, y = UMAP_2, colour = cell_labels), size = 0.5, 
+            data = data.frame(UMAP_1 = reducedDim(cur_lab_sce_new, "UMAP_fastMNN")[,1],
+                              UMAP_2 = reducedDim(cur_lab_sce_new, "UMAP_fastMNN")[,2],
+                              cell_labels = colData(cur_lab_sce_new)$cell_labels)) +
+    scale_color_manual(values = metadata(sce_new)$colour_vectors$cell_types) + 
+    theme_bw()
+```

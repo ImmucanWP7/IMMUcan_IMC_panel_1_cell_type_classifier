@@ -1,0 +1,17 @@
+name: "Panel_1_classifcation_public"
+output_dir: ../docs
+navbar:
+  title: "Panel_1_classifcation_public"
+  left:
+  - text: Home
+    href: index.html
+  - text: About
+    href: about.html
+  - text: License
+    href: license.html
+output:
+  workflowr::wflow_html:
+    toc: yes
+    toc_float: yes
+    theme: cosmo
+    highlight: textmate
