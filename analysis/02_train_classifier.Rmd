@@ -14,7 +14,7 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 
 # Please set this path to the folder which contains all the data downloaded from Zenodo
-mount_path <- "D:/Data/classification_public/"
+mount_path <- "D:/Data/classification_public_for_zenodo_upload/"
 ```
 
 In this script we will train a random forest classifier on the single cell data
@@ -69,6 +69,8 @@ table(lab_sce$cell_labels)
 table(lab_sce_new$cell_labels)
 
 test <- cbind(lab_sce,lab_sce_new)
+
+table(test$cell_labels)
 ```
 
 Next, we will first split the labelled data into training and test (validation) data at a ratio of 80/20 using images as grouping level.
