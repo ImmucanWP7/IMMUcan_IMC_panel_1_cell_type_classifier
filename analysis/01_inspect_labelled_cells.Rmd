@@ -86,18 +86,6 @@ dittoHeatmap(agr_sce[cur_markers,], assay = "exprs",
             scale = "none", heatmap.colors = viridis(100), order.by = "cell_labels",
             annotation_colors = list(cell_labels = metadata(sce)$colour_vectors$cell_types))
 
-# Centered and scaled
-pdf(file =  "C:/Users/dschulz/switchdrive/IMMUcan_new/Manuscripts/Workflow2022/Figures/Figure_6/gated_cells_heatmap_gating_markers.pdf",
-    width = 8,
-    height = 6)
-dittoHeatmap(agr_sce[cur_markers,], assay = "exprs",
-            annot.by = c( "cell_labels", "Indication"), 
-            cluster_rows = FALSE, order.by = "cell_labels",
-            annotation_colors = list(cell_labels = metadata(sce)$colour_vectors$cell_types),
-            heatmap.colors = colorRampPalette(c("dark blue", "white", "dark red"))(100),
-            breaks = seq(-3, 3, length.out = 101))
-dev.off()
-
 ncol(lab_sce)
 ```
 
